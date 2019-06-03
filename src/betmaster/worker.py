@@ -1,11 +1,12 @@
-import os
 import sys
-from threading import Thread
-
+import psycopg2
+import psycopg2.pool
 import yaml
 import argparse
 import yaml.scanner
+from threading import Thread
 from betmaster.redis import RedisQueue
+from betmaster.utils import check_positive, check_conf, get_configuration
 
 NAMESPACE = 'betmaster'
 DSN = 'dbname={database} user={user} password={password} host={host}'
@@ -25,34 +26,10 @@ def parse_args(args):
     return vars(parser.parse_args(args))
 
 
-def check_positive(value):
-    value = int(value)
-    if value <= 0:
-        raise argparse.ArgumentTypeError(
-            f"{value} is an invalid positive int value")
-    return value
-
-
-def check_conf(path):
-    actions_conf = os.path.abspath(path)
-    try:
-        with open(actions_conf, 'r') as f:
-            yaml.load(f.read())
-    except (yaml.parser.ParserError,
-            yaml.scanner.ScannerError) as e:
-        raise argparse.ArgumentTypeError(f'Invalid configuration file {e}')
-    except FileNotFoundError:
-        raise argparse.ArgumentTypeError(f'No such file: {actions_conf}')
-    return actions_conf
-
-
-def get_configuration(conf_path, service):
-    with open(conf_path, 'r') as f:
-        db_conf = yaml.load(f.read())
-    return db_conf[service]
-
-
 class WorkersPool:
+    """Initialize pool of workers that will listen redis queue for the event url then download and parse html page
+    find arbitrage odds and save results into database"""
+
     def __init__(self, count, conn_pool):
         self.count = count
         self.conn_pool = conn_pool
@@ -106,13 +83,17 @@ class Worker:
 
 
 def main():
+    """
+    Workers pool initialization script
+    """
     args = parse_args(sys.argv[1:])
     redis_conf = get_configuration(args['conf_path'], 'redis')
     stop_conn = RedisQueue(name=args.get('db_key'), **redis_conf)
 
+    # configure at postgres config
     max_connections = 50
     if args['workers'] > max_connections:
-        raise ValueError('To much workers use from 1 to {}'.format(max_connections))
+        raise ValueError(f'To much workers use from 1 to {max_connections}')
     try:
         # database configuration
         db_conf = get_configuration(args['conf_path'], 'database')
@@ -127,8 +108,9 @@ def main():
     ths = []
     try:
         for i in range(args['workers']):
-            worker = Worker(name='Worker #{}'.format(i), network=args.get('db_key'), conn_pool=conn_pool)
-            worker.register()
+            worker = Worker(
+                name=f'Worker #{i}',
+                conn_pool=conn_pool)
             t = Thread(target=worker.run, )
             t.start()
             ths.append(t)

@@ -50,3 +50,5 @@ MANIFEST
 .env*/
 env*/
 venv*/
+
+coverage-report/
