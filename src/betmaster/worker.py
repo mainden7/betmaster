@@ -57,6 +57,16 @@ class WorkersPool:
 
 
 class Worker:
+    """
+    Worker
+    MSG Example (raw and approx):
+    - type: dict
+    - format: pickle
+    structure
+    url: [url]
+    metadata: [data]
+    """
+
     STOP_WORD = "STOP"
 
     def __init__(self, name, conn_pool):
@@ -71,15 +81,25 @@ class Worker:
             self.conn.put('message', 'STOP')
 
     def run(self):
+        # listen to queue
         while True:
             msg = self.conn.get('message')
             if msg == self.STOP_WORD:
                 break
             try:
                 # do some stuff here
+                deserialized_msg = self._deserialize_msg(msg)
+                self._process_message(deserialized_msg)
                 pass
             except:
                 pass
+
+    def _deserialize_msg(self, msg):
+        """"""
+        return pickle.loads(msg)
+
+    def _process_message(self, msg: dict):
+        """"""
 
 
 def main():
@@ -88,7 +108,7 @@ def main():
     """
     args = parse_args(sys.argv[1:])
     redis_conf = get_configuration(args['conf_path'], 'redis')
-    stop_conn = RedisQueue(name=args.get('db_key'), **redis_conf)
+    redis_conn = RedisQueue(name=args.get('db_key'), **redis_conf)
 
     # configure at postgres config
     max_connections = 50
@@ -101,7 +121,10 @@ def main():
             minconn=1,
             maxconn=max_connections,
             dsn=DSN.format(**db_conf['user']))
-    except (FileNotFoundError, yaml.parser.ParserError, yaml.scanner.ScannerError, psycopg2.Error) as e:
+    except (FileNotFoundError,
+            yaml.parser.ParserError,
+            yaml.scanner.ScannerError,
+            psycopg2.Error) as e:
         print(e)
         sys.exit()
 
@@ -118,7 +141,7 @@ def main():
             t.join()
     except KeyboardInterrupt:
         for _ in range(args['workers']):
-            stop_conn.lput('message', 'STOP')
+            redis_conn.lput('message', 'STOP')
     finally:
         conn_pool.closeall()
 
