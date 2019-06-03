@@ -34,6 +34,7 @@ htmlcov/*
 junit.xml
 coverage.xml
 .pytest_cache/
+coverage-report/
 
 # Build and docs folder/files
 build/*
@@ -51,4 +52,5 @@ MANIFEST
 env*/
 venv*/
 
-coverage-report/
+# configs
+conf/*.yaml
